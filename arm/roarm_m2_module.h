@@ -245,6 +245,12 @@ bool RoArmM2_restoreTorqueLock() {
   return false;
 }
 
+void RoArmM2_waitSharedBusQuiet() {
+  while ((long)(sharedBusQuietUntil - millis()) > 0) {
+    delay(1);
+  }
+}
+
 
 // set the current position as the middle position of the servo.
 // input the ID of the servo that you wannna set middle position. 
@@ -272,7 +278,10 @@ void emergencyStopProcessing() {
 }
 
 bool RoArmM2_writePosEx(byte servoID, s16 pos, u16 speedInput, u8 accInput) {
-  RoArmM2_holdTorqueLock();
+  bool guardTouchedBus = RoArmM2_holdTorqueLock();
+  if (guardTouchedBus) {
+    RoArmM2_waitSharedBusQuiet();
+  }
   if (!SharedBus_take("arm write pos")) {
     return false;
   }
@@ -282,7 +291,10 @@ bool RoArmM2_writePosEx(byte servoID, s16 pos, u16 speedInput, u8 accInput) {
 }
 
 bool RoArmM2_syncWritePosEx(u8* ids, u8 idCount, s16* pos, u16* speedInput, u8* accInput) {
-  RoArmM2_holdTorqueLock();
+  bool guardTouchedBus = RoArmM2_holdTorqueLock();
+  if (guardTouchedBus) {
+    RoArmM2_waitSharedBusQuiet();
+  }
   if (!SharedBus_take("arm sync write")) {
     return false;
   }

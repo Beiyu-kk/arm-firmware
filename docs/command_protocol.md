@@ -18,7 +18,7 @@ pio device monitor -p COM8 -b 921600
 |---|---|---|---|
 | `100` | 回到初始化姿态 | `RoArmM2_moveInit()` | `{"T":100}` |
 | `101` | 单关节弧度控制 | `RoArmM2_singleJointAbsCtrl()` | `{"T":101,"joint":1,"rad":0,"spd":0,"acc":10}` |
-| `102` | 多关节弧度控制，可选 `r`/`rod` 控制第五关节 | `RoArmM2_allJointAbsCtrl()` | `{"T":102,"base":0,"shoulder":0,"elbow":1.57,"hand":3.14,"r":0,"spd":30,"acc":10}` |
+| `102` | 五关节弧度控制，必须提供 `r`/`rod`，ID11-16 同一帧同步写 | `BookArm_syncAllJointsRad()` | `{"T":102,"base":0,"shoulder":0,"elbow":1.57,"hand":3.14,"r":0,"spd":30,"acc":10}` |
 | `103` | 单轴坐标控制 | `RoArmM2_singlePosAbsBesselCtrl()` | `{"T":103,"axis":1,"pos":235,"spd":0.25}` |
 | `104` | XYZT 插值控制 | `RoArmM2_allPosAbsBesselCtrl()` | `{"T":104,"x":235,"y":0,"z":234,"t":3.14,"spd":0.25}` |
 | `1041` | XYZT 直接控制 | `RoArmM2_baseCoordinateCtrl()` + `RoArmM2_goalPosMove()` | `{"T":1041,"x":235,"y":0,"z":234,"t":3.14}` |

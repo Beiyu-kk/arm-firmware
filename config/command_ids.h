@@ -61,6 +61,7 @@
 
 // {"T":102,"base":0,"shoulder":0,"elbow":1.57,"hand":1.57,"spd":0,"acc":10}
 // input the angle in rad(180°=3.1415926).
+// r/rod is required. ID11-16 are sent together in one SyncWritePosEx frame.
 // spd: deg/s, acc: deg/s^2.
 #define CMD_JOINTS_RAD_CTRL 102
 

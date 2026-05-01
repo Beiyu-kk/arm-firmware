@@ -199,6 +199,54 @@ void ExternalRod_dynamicAdaptation(byte inputMode, int inputTorque) {
   }
 }
 
+bool BookArm_syncAllJointsRad(
+  double inputBase,
+  double inputShoulder,
+  double inputElbow,
+  double inputHand,
+  double inputRod,
+  u16 speedDegPerSec,
+  u8 accDegPerSec2,
+  u16 rodTorqueInput
+) {
+#if ARM_FORCE_MAX_TORQUE_LIMIT_ALWAYS_ON
+  rodTorqueInput = ST_TORQUE_MAX;
+#endif
+  externalRodRequestedTorque = constrain(rodTorqueInput, ST_TORQUE_MIN, ST_TORQUE_MAX);
+  extRodGoalAngleDeg = constrain(inputRod * 180.0 / M_PI, EXT_ROD_MIN_ANGLE_DEG, EXT_ROD_MAX_ANGLE_DEG);
+  if (!externalRodPositionModeActive) {
+    ExternalRod_setServoMode(EXT_ROD_SERVO_ID);
+  }
+
+  RoArmM2_baseJointCtrlRad(0, inputBase, 0, 0);
+  RoArmM2_shoulderJointCtrlRad(0, inputShoulder, 0, 0);
+  RoArmM2_elbowJointCtrlRad(0, inputElbow, 0, 0);
+  RoArmM2_handJointCtrlRad(0, inputHand, 0, 0);
+
+  u8 ids[6] = {
+    BASE_SERVO_ID,
+    SHOULDER_DRIVING_SERVO_ID,
+    SHOULDER_DRIVEN_SERVO_ID,
+    ELBOW_SERVO_ID,
+    GRIPPER_SERVO_ID,
+    EXT_ROD_SERVO_ID
+  };
+  s16 positions[6] = {
+    goalPos[0],
+    goalPos[1],
+    goalPos[2],
+    goalPos[3],
+    goalPos[4],
+    externalRodAngleToPos(extRodGoalAngleDeg)
+  };
+  u16 servoSpd = angleSpeedToServoSteps(speedDegPerSec);
+  u8 servoAcc = angleAccToServoAcc(accDegPerSec2);
+  u16 speeds[6] = {servoSpd, servoSpd, servoSpd, servoSpd, servoSpd, servoSpd};
+  u8 accs[6] = {servoAcc, servoAcc, servoAcc, servoAcc, servoAcc, servoAcc};
+
+  return RoArmM2_syncWritePosEx(ids, 6, positions, speeds, accs);
+}
+
 void ExternalRod_moveToAngle(double inputAng, u16 speedDegPerSec, u8 accDegPerSec2, u16 torqueInput) {
 #if ARM_FORCE_MAX_TORQUE_LIMIT_ALWAYS_ON
   torqueInput = ST_TORQUE_MAX;

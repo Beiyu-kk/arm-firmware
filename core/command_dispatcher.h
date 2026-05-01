@@ -49,25 +49,27 @@ void jsonCmdReceiveHandler(){
 												}
 												break;
 	case CMD_JOINTS_RAD_CTRL:
-												RoArmM2_allJointAbsCtrl(
+												if (!jsonCmdReceive.containsKey("r") && !jsonCmdReceive.containsKey("rod")) {
+													jsonInfoHttp.clear();
+													jsonInfoHttp["T"] = 1021;
+													jsonInfoHttp["ok"] = false;
+													jsonInfoHttp["error"] = "T=102 requires r or rod";
+													serializeJson(jsonInfoHttp, Serial);
+													Serial.println();
+													break;
+												}
+												BookArm_syncAllJointsRad(
 												jsonCmdReceive["base"],
 												jsonCmdReceive["shoulder"],
 												jsonCmdReceive["elbow"],
 												jsonCmdReceive["hand"],
+												jsonCmdReceive.containsKey("rod") ?
+													jsonCmdReceive["rod"].as<double>() :
+													jsonCmdReceive["r"].as<double>(),
 												jsonCmdReceive["spd"] | 0,
-												jsonCmdReceive["acc"] | 0
+												jsonCmdReceive["acc"] | 0,
+												jsonCmdReceive["rtorque"] | EXT_ROD_DEFAULT_TORQUE
 												);
-												if (jsonCmdReceive.containsKey("rod") || jsonCmdReceive.containsKey("r")) {
-													double rodRad = jsonCmdReceive.containsKey("rod") ?
-														jsonCmdReceive["rod"].as<double>() :
-														jsonCmdReceive["r"].as<double>();
-													ExternalRod_moveToAngle(
-													rodRad * 180.0 / M_PI,
-													jsonCmdReceive["spd"] | 0,
-													jsonCmdReceive["acc"] | 0,
-													jsonCmdReceive["rtorque"] | EXT_ROD_DEFAULT_TORQUE
-													);
-												}
 												break;
 	case CMD_SINGLE_AXIS_CTRL: 
 												RoArmM2_singlePosAbsBesselCtrl(
