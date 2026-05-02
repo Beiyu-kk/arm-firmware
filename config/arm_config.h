@@ -138,7 +138,7 @@ unsigned long sharedBusLastFeedbackMs = 0;
 #define SHOULDER_DRIVING_POS_DIRECTION  1
 #define SHOULDER_DRIVEN_POS_DIRECTION  -1
 #define ELBOW_POS_DIRECTION             1
-#define GRIPPER_POS_DIRECTION           1
+#define GRIPPER_POS_DIRECTION           -1
 
 // Keep conservative raw safety windows even after changing zero positions.
 #define BASE_MIN_POS       0
@@ -292,7 +292,7 @@ bool newCmdReceived = false;
 #define ARM_DISABLE_AUTO_TORQUE_RELEASE 1
 
 // 1 makes the firmware ignore every runtime torque-off request. This keeps the
-// arm torque lock enabled even when T=0, T=210 cmd=0, T=134 cmd=0, or T=154 cmd=0
+// arm torque lock enabled even when T=0, T=210 cmd=0, or T=134 cmd=0
 // is received.
 #define ARM_FORCE_TORQUE_LOCK_ALWAYS_ON 1
 

@@ -1,8 +1,8 @@
 #pragma once
 
-#include <SCServo.h>
+#include "../drivers/cf35_gripper_bus.h"
 
-SCSCL externalGripperBus;
+BookArm_CFSCL externalGripperBus;
 
 bool ExternalGripper_takeBus(const char* owner) {
 #if EXT_GRIPPER_USE_ARM_BUS
@@ -42,7 +42,10 @@ struct ExternalGripperFeedback {
 ExternalGripperFeedback externalGripperFeedback = {false, 0, 0, 0, 0, 0, 0, 0};
 bool externalGripperOnline = false;
 int externalGripperRequestedTorque = EXT_GRIPPER_DEFAULT_TORQUE;
-bool externalGripperTorqueWarned = false;
+bool externalGripperCloseHoldPending = false;
+unsigned long externalGripperCloseHoldStartMs = 0;
+unsigned long externalGripperCloseHoldDelayMs = 500;
+s16 externalGripperCloseHoldTorque = -80;
 
 double externalGripperDegToRad(double inputAng) {
   return (inputAng / 180.0) * M_PI;
@@ -117,17 +120,18 @@ void ExternalGripper_initCheck() {
   }
 }
 
-void ExternalGripper_torqueCtrl(u8 enableCMD) {
+bool ExternalGripper_torqueCtrl(u8 enableCMD) {
 #if ARM_FORCE_TORQUE_LOCK_ALWAYS_ON
   enableCMD = 1;
 #endif
   if (!ExternalGripper_takeBus("gripper torque")) {
-    return;
+    return false;
   }
   externalGripperBus.EnableTorque(EXT_GRIPPER_SERVO_ID, enableCMD);
   ExternalGripper_pauseArmConstant();
   ExternalGripper_releaseBus(SHARED_BUS_GRIPPER_CMD_QUIET_MS);
   RoArmM2_restoreTorqueLock();
+  return true;
 }
 
 void ExternalGripper_setMiddle(byte servoID) {
@@ -144,9 +148,9 @@ void ExternalGripper_setEleMode(byte servoID, s16 torque) {
   if (!ExternalGripper_takeBus("gripper ele mode")) {
     return;
   }
-  externalGripperBus.PWMMode(servoID);
+  externalGripperBus.EleMode(servoID);
   torque = constrain(torque, -200, 200);
-  externalGripperBus.WritePWM(servoID, torque);
+  externalGripperBus.WriteEle(servoID, torque);
   ExternalGripper_pauseArmConstant();
   ExternalGripper_releaseBus(SHARED_BUS_GRIPPER_CMD_QUIET_MS);
   RoArmM2_restoreTorqueLock();
@@ -156,13 +160,11 @@ bool ExternalGripper_setServoMode(byte servoID = EXT_GRIPPER_SERVO_ID) {
   if (!ExternalGripper_takeBus("gripper servo mode")) {
     return false;
   }
-  externalGripperBus.unLockEprom(servoID);
-  externalGripperBus.writeByte(servoID, SMS_STS_MODE, 0);
-  externalGripperBus.LockEprom(servoID);
+  bool ok = externalGripperBus.ServoMode(servoID) != 0;
   ExternalGripper_pauseArmConstant();
   ExternalGripper_releaseBus(SHARED_BUS_GRIPPER_CMD_QUIET_MS);
   RoArmM2_restoreTorqueLock();
-  return true;
+  return ok;
 }
 
 void ExternalGripper_torqueLimit(int inputTorque) {
@@ -170,10 +172,22 @@ void ExternalGripper_torqueLimit(int inputTorque) {
   inputTorque = ST_TORQUE_MAX;
 #endif
   externalGripperRequestedTorque = constrain(inputTorque, ST_TORQUE_MIN, ST_TORQUE_MAX);
-  if (!externalGripperTorqueWarned && InfoPrint == 1) {
-    Serial.println("Note: public SCServo library does not expose CF35 torque-limit registers; torque values are accepted but not applied.");
-    externalGripperTorqueWarned = true;
+  if (!ExternalGripper_takeBus("gripper torque limit")) {
+    return;
   }
+  externalGripperBus.unLockEprom(EXT_GRIPPER_SERVO_ID);
+  externalGripperBus.writeWord(
+    EXT_GRIPPER_SERVO_ID,
+    RSBL_ST_TORQUE_LIMIT_L,
+    externalGripperRequestedTorque
+  );
+  externalGripperBus.LockEprom(EXT_GRIPPER_SERVO_ID);
+#if ARM_FORCE_TORQUE_LOCK_ALWAYS_ON
+  externalGripperBus.EnableTorque(EXT_GRIPPER_SERVO_ID, 1);
+#endif
+  ExternalGripper_pauseArmConstant();
+  ExternalGripper_releaseBus(SHARED_BUS_GRIPPER_CMD_QUIET_MS);
+  RoArmM2_restoreTorqueLock();
 }
 
 void ExternalGripper_dynamicAdaptation(byte inputMode, int inputTorque) {
@@ -184,24 +198,14 @@ void ExternalGripper_dynamicAdaptation(byte inputMode, int inputTorque) {
   }
 }
 
+bool ExternalGripper_moveToPos(s16 posInput, u16 speedInput, u8 accInput, u16 torqueInput);
+
 void ExternalGripper_moveToAngle(double inputAng, u16 speedInput, u8 accInput, u16 torqueInput) {
 #if ARM_FORCE_MAX_TORQUE_LIMIT_ALWAYS_ON
   torqueInput = ST_TORQUE_MAX;
 #endif
   externalGripperRequestedTorque = constrain(torqueInput, ST_TORQUE_MIN, ST_TORQUE_MAX);
-  ExternalGripper_setServoMode(EXT_GRIPPER_SERVO_ID);
-  if (!ExternalGripper_takeBus("gripper angle")) {
-    return;
-  }
-  externalGripperBus.WritePosEx(
-    EXT_GRIPPER_SERVO_ID,
-    externalGripperAngleToPos(inputAng),
-    speedInput,
-    accInput
-  );
-  ExternalGripper_pauseArmConstant();
-  ExternalGripper_releaseBus(SHARED_BUS_GRIPPER_CMD_QUIET_MS);
-  RoArmM2_restoreTorqueLock();
+  ExternalGripper_moveToPos(externalGripperAngleToPos(inputAng), speedInput, accInput, externalGripperRequestedTorque);
 }
 
 bool ExternalGripper_moveToPos(s16 posInput, u16 speedInput, u8 accInput, u16 torqueInput) {
@@ -209,60 +213,75 @@ bool ExternalGripper_moveToPos(s16 posInput, u16 speedInput, u8 accInput, u16 to
   torqueInput = ST_TORQUE_MAX;
 #endif
   externalGripperRequestedTorque = constrain(torqueInput, ST_TORQUE_MIN, ST_TORQUE_MAX);
-  ExternalGripper_setServoMode(EXT_GRIPPER_SERVO_ID);
   if (!ExternalGripper_takeBus("gripper raw pos")) {
     return false;
   }
-  externalGripperBus.WritePosEx(
+  externalGripperBus.ServoMode(EXT_GRIPPER_SERVO_ID);
+  bool ok = externalGripperBus.WritePosEx(
     EXT_GRIPPER_SERVO_ID,
     constrain(posInput, 0, ARM_SERVO_POS_RANGE - 1),
     speedInput,
-    accInput
-  );
+    accInput,
+    externalGripperRequestedTorque
+  ) != 0;
   ExternalGripper_pauseArmConstant();
   ExternalGripper_releaseBus(SHARED_BUS_GRIPPER_CMD_QUIET_MS);
   RoArmM2_restoreTorqueLock();
-  return true;
+  return ok;
 }
 
-void ExternalGripper_open(u16 speedInput, u8 accInput, u16 torqueInput) {
+bool ExternalGripper_open(u16 speedInput, u8 accInput, u16 torqueInput) {
 #if ARM_FORCE_MAX_TORQUE_LIMIT_ALWAYS_ON
   torqueInput = ST_TORQUE_MAX;
 #endif
   externalGripperRequestedTorque = constrain(torqueInput, ST_TORQUE_MIN, ST_TORQUE_MAX);
-  ExternalGripper_setServoMode(EXT_GRIPPER_SERVO_ID);
-  if (!ExternalGripper_takeBus("gripper open")) {
-    return;
-  }
-  externalGripperBus.WritePosEx(
-    EXT_GRIPPER_SERVO_ID,
-    2047,
-    speedInput,
-    accInput
-  );
-  ExternalGripper_pauseArmConstant();
-  ExternalGripper_releaseBus(SHARED_BUS_GRIPPER_CMD_QUIET_MS);
-  RoArmM2_restoreTorqueLock();
+  return ExternalGripper_moveToPos(2047, speedInput, accInput, externalGripperRequestedTorque);
 }
 
-void ExternalGripper_close(u16 speedInput, u8 accInput, u16 torqueInput) {
+bool ExternalGripper_close(u16 speedInput, u8 accInput, u16 torqueInput) {
 #if ARM_FORCE_MAX_TORQUE_LIMIT_ALWAYS_ON
   torqueInput = ST_TORQUE_MAX;
 #endif
   externalGripperRequestedTorque = constrain(torqueInput, ST_TORQUE_MIN, ST_TORQUE_MAX);
-  ExternalGripper_setServoMode(EXT_GRIPPER_SERVO_ID);
-  if (!ExternalGripper_takeBus("gripper close")) {
+  return ExternalGripper_moveToPos(3150, speedInput, accInput, externalGripperRequestedTorque);
+}
+
+void ExternalGripper_stopCloseHold() {
+  externalGripperCloseHoldPending = false;
+  externalGripperCloseHoldTorque = 0;
+}
+
+void ExternalGripper_startCloseThenHold(
+  u16 speedInput,
+  u8 accInput,
+  u16 torqueInput,
+  s16 holdTorqueInput = -80,
+  unsigned long delayMs = 500
+) {
+#if ARM_FORCE_MAX_TORQUE_LIMIT_ALWAYS_ON
+  torqueInput = ST_TORQUE_MAX;
+#endif
+  externalGripperCloseHoldTorque = -constrain(abs(holdTorqueInput), 1, 200);
+  externalGripperCloseHoldDelayMs = constrain(delayMs, 0UL, 10000UL);
+  externalGripperCloseHoldPending = true;
+  ExternalGripper_close(
+    speedInput,
+    accInput,
+    constrain(torqueInput, ST_TORQUE_MIN, ST_TORQUE_MAX)
+  );
+  externalGripperCloseHoldStartMs = millis();
+}
+
+void ExternalGripper_closeHoldHandle() {
+  if (!externalGripperCloseHoldPending) {
     return;
   }
-  externalGripperBus.WritePosEx(
-    EXT_GRIPPER_SERVO_ID,
-    3150,
-    speedInput,
-    accInput
-  );
-  ExternalGripper_pauseArmConstant();
-  ExternalGripper_releaseBus(SHARED_BUS_GRIPPER_CMD_QUIET_MS);
-  RoArmM2_restoreTorqueLock();
+  if (millis() - externalGripperCloseHoldStartMs < externalGripperCloseHoldDelayMs) {
+    return;
+  }
+
+  ExternalGripper_setEleMode(EXT_GRIPPER_SERVO_ID, externalGripperCloseHoldTorque);
+  externalGripperCloseHoldPending = false;
 }
 
 void Fusion_jointsAngleGripperCtrl(

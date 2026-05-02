@@ -94,7 +94,14 @@ bool BookArm_moveAllCalibrationServosRaw(s16 inputPos, u16 speedInput, u8 accInp
 
   bool gripperOk = false;
   if (ExternalGripper_takeBus("raw gripper pos")) {
-    externalGripperBus.WritePosEx(EXT_GRIPPER_SERVO_ID, rawPos, rawSpeed, rawAcc);
+    externalGripperBus.ServoMode(EXT_GRIPPER_SERVO_ID);
+    externalGripperBus.WritePosEx(
+      EXT_GRIPPER_SERVO_ID,
+      rawPos,
+      rawSpeed,
+      rawAcc,
+      externalGripperRequestedTorque
+    );
     ExternalGripper_pauseArmConstant();
     ExternalGripper_releaseBus(SHARED_BUS_GRIPPER_CMD_QUIET_MS);
     gripperOk = true;

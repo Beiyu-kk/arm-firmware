@@ -150,40 +150,22 @@
 // {"T":115}
 #define CMD_SWITCH_OFF 115
 
-// ctrl a single joint abs angle in deg.
-// joint: 1-BASE_JOINT + ->left
-//        2-SHOULDER_JOINT + ->down
-//        3-ELBOW_JOINT + ->down
-//        4-EOAT_JOINT + ->grab/down
-// spd: deg/s
-// acc: deg/s^2
-// {"T":121,"joint":1,"angle":0,"spd":10,"acc":10}
-#define CMD_SINGLE_JOINT_ANGLE 121
-
-// ctrl all joints
-// b - BASE
-// s - SHOULDER
-// e - ELBOW
-// h - HAND
-// spd - deg/s
-// acc - deg/s^2
-// {"T":122,"b":0,"s":0,"e":90,"h":180,"spd":10,"acc":10}
-#define CMD_JOINTS_ANGLE_CTRL  122
-
-// constant ctrl
-// m: 0 - angle
-//    1 - xyzt
-// cmd: 0 - stop
-// 		1 - increase
-// 		2 - decrease
-// {"T":123,"m":0,"axis":0,"cmd":0,"spd":3}
-#define CMD_CONSTANT_CTRL  123
-
 // read all arm joint angles and torques as arrays.
 // joints_rad: b, s, e, t, rod in radians.
 // joints_torque: b, s, e, t, rod servo loads.
-// {"T":124}
-#define CMD_JOINTS_ARRAY_FEEDBACK  124
+// {"T":121}
+#define CMD_JOINTS_ARRAY_FEEDBACK  121
+
+// torque-lock ctrl for the five logical arm joints:
+// base, shoulder, elbow, EOAT/fourth joint, and external rod/fifth joint.
+// The shoulder joint drives both ID12 and ID13.
+// on:  {"T":122,"cmd":1}
+// off: {"T":122,"cmd":0}
+#define CMD_FIVE_JOINTS_TORQUE_CTRL 122
+
+// Alias of CMD_JOINTS_RAD_CTRL.
+// {"T":123,"base":0,"shoulder":0,"elbow":1.57,"hand":1.57,"r":0,"spd":25,"acc":5}
+#define CMD_JOINTS_RAD_CTRL_ALIAS 123
 
 
 // ---===< External Gripper-B ctrl. >===---
@@ -222,66 +204,28 @@
 // {"T":137,"id":1,"tor":120}
 #define CMD_EXT_GRIPPER_SET_ELEMODE 137
 
-// move the arm joints and the daisy-chained Gripper-B as one coordinated unit.
-// arm angles are in degrees, gripper angle is in degrees.
-// {"T":140,"b":0,"s":0,"e":90,"h":180,"g":90,"spd":20,"acc":10,"gspd":100,"gacc":10,"torque":1000}
-#define CMD_FUSION_JOINTS_GRIPPER_ANGLE 140
+// close the external Gripper-B, then switch to negative constant-force hold after delay ms.
+// hold/holdtor sets the constant-force torque magnitude/direction; it is forced negative.
+// {"T":138,"spd":100,"acc":10,"torque":1000,"hold":-80,"delay":500}
+#define CMD_EXT_GRIPPER_CLOSE_HOLD 138
 
+// ---===< Full arm + external gripper grouped ctrl. >===---
 
-// ---===< External rod ST3215 ctrl. >===---
+// read all five logical arm joints plus external Gripper-B in one grouped status response.
+// gripper_state is "open" or "closed".
+// {"T":141}
+#define CMD_ALL_MOTORS_STATE_FEEDBACK 141
 
-// retract the external rod to EXT_ROD_RETRACT_ANGLE_DEG.
-// spd: deg/s, acc: deg/s^2.
-// {"T":150,"spd":100,"acc":10,"torque":1000}
-#define CMD_EXT_ROD_RETRACT 150
+// torque-lock ctrl for all arm joint motors plus external Gripper-B.
+// Uses one sync-write packet for IDs 11,12,13,14,15,16,1 on the shared servo bus.
+// on:  {"T":142,"cmd":1}
+// off: {"T":142,"cmd":0}
+#define CMD_ALL_MOTORS_TORQUE_CTRL 142
 
-// extend the external rod to EXT_ROD_EXTEND_ANGLE_DEG.
-// spd: deg/s, acc: deg/s^2.
-// {"T":151,"spd":100,"acc":10,"torque":1000}
-#define CMD_EXT_ROD_EXTEND 151
-
-// control the external rod ST3215 by absolute angle in degrees.
-// spd: deg/s, acc: deg/s^2.
-// {"T":152,"angle":180,"spd":100,"acc":10,"torque":1000}
-#define CMD_EXT_ROD_ANGLE 152
-
-// read external rod feedback.
-// {"T":153}
-#define CMD_EXT_ROD_FEEDBACK 153
-
-// torque-lock ctrl for the external rod ST3215.
-// With ARM_FORCE_TORQUE_LOCK_ALWAYS_ON enabled, cmd=0 is ignored and torque stays on.
-// on: {"T":154,"cmd":1}
-#define CMD_EXT_ROD_TORQUE_CTRL 154
-
-// dynamic torque adaptation for the external rod ST3215.
-// {"T":155,"mode":1,"r":600}
-// {"T":155,"mode":0,"r":1000}
-#define CMD_EXT_ROD_DYNAMIC_ADAPTATION 155
-
-// set the current position as the middle position of the external rod ST3215.
-// {"T":156,"id":2}
-#define CMD_EXT_ROD_SET_MIDDLE 156
-
-// switch the external rod ST3215 back to servo position mode.
-// {"T":157,"id":2}
-#define CMD_EXT_ROD_SET_SERVO_MODE 157
-
-// switch the external rod ST3215 into continuous motor mode.
-// {"T":158,"id":2}
-#define CMD_EXT_ROD_SET_MOTOR_MODE 158
-
-// drive the rod in motor mode. speed can be negative, zero stops motion.
-// {"T":159,"speed":600,"acc":10}
-#define CMD_EXT_ROD_MOTOR_SPEED 159
-
-// move the arm joints, Gripper-B, and rod as one coordinated unit.
-// arm/gripper/rod angles are in degrees.
-// spd: deg/s, acc: deg/s^2 for the arm joints and rod. gspd/gacc keep gripper servo raw units.
-// {"T":160,"b":0,"s":0,"e":90,"h":180,"g":90,"r":180,"spd":20,"acc":10,"gspd":100,"gacc":10,"gtorque":1000,"rtorque":1000}
-#define CMD_FUSION_JOINTS_GRIPPER_ROD_ANGLE 160
-
-
+// sync-control the first five logical arm joints in radians plus external Gripper-B.
+// gripper/g/cmd: 0=open, 1=closed. r/rod is required.
+// {"T":143,"base":0,"shoulder":0,"elbow":0,"hand":0,"r":0,"gripper":1,"spd":25,"acc":5}
+#define CMD_ALL_MOTORS_SYNC_CTRL 143
 
 // === === === MISSION CTRL & FILE CTRL === === ===
 

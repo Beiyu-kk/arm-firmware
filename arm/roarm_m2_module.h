@@ -444,7 +444,6 @@ void RoArmM2_moveInit() {
 // the accInput(u8) is the acceleration of the servo movement.
 // radInput increase, move to left.
 int RoArmM2_baseJointCtrlRad(byte returnType, double radInput, u16 speedInput, u8 accInput) {
-  radInput = constrain(radInput, -M_PI, M_PI);
   goalPos[0] = calibratedJointRadToServoPos(
     radInput,
     BASE_ZERO_POS,
@@ -469,7 +468,6 @@ int RoArmM2_baseJointCtrlRad(byte returnType, double radInput, u16 speedInput, u
 // the accInput(u8) is the acceleration of the servo movement.
 // radInput increase, it leans forward.
 int RoArmM2_shoulderJointCtrlRad(byte returnType, double radInput, u16 speedInput, u8 accInput) {
-  radInput = constrain(radInput, -M_PI/2, M_PI/2);
   goalPos[1] = calibratedJointRadToServoPos(
     radInput,
     SHOULDER_DRIVING_ZERO_POS,
@@ -1443,18 +1441,10 @@ void constantHandle() {
   if (const_cmd_rod == MOVE_INCREASE) {
     if (const_mode == CONST_ANGLE) {
       const_goal_rod += const_spd * 180.0 / M_PI;
-      if (const_goal_rod > EXT_ROD_MAX_ANGLE_DEG) {
-        const_goal_rod = EXT_ROD_MAX_ANGLE_DEG;
-        const_cmd_rod = MOVE_STOP;
-      }
     }
   } else if (const_cmd_rod == MOVE_DECREASE) {
     if (const_mode == CONST_ANGLE) {
       const_goal_rod -= const_spd * 180.0 / M_PI;
-      if (const_goal_rod < EXT_ROD_MIN_ANGLE_DEG) {
-        const_goal_rod = EXT_ROD_MIN_ANGLE_DEG;
-        const_cmd_rod = MOVE_STOP;
-      }
     }
   }
 

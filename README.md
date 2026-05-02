@@ -88,19 +88,20 @@ pio device monitor -p COM8 -b 921600
 | 113 | 12V 开关 PWM 控制 | `{"T":113,"pwm_a":-255,"pwm_b":-255}` |
 | 114 | 灯光控制 | `{"T":114,"led":255}` |
 | 115 | 关闭开关输出 | `{"T":115}` |
-| 121 | 单关节角度控制，单位 deg，`joint=1..5`，其中 `joint=5` 控制 ID16 外杆；`spd/acc` 为 `deg/s`、`deg/s^2` | `{"T":121,"joint":5,"angle":180,"spd":100,"acc":10}` |
-| 122 | 五关节角度控制，单位 deg；可选 `r` 或 `rod` 同步控制第五关节 ID16；五个关节共用 `spd/acc` | `{"T":122,"b":0,"s":0,"e":0,"h":0,"r":0,"spd":30,"acc":8}` |
-| 123 | 连续控制，`m=0` 角度，`axis=5` 连续控制 ID16 外杆 | `{"T":123,"m":0,"axis":5,"cmd":1,"spd":3}` |
-| 124 | 读取全部关节角度和力矩数组反馈，顺序为 `b,s,e,t,杆电机` | `{"T":124}` |
+| 121 | 读取全部关节角度和力矩数组反馈，顺序为 `b,s,e,t,杆电机` | `{"T":121}` |
+| 122 | 五个逻辑关节扭矩锁定/释放，控制 `base,shoulder,elbow,EOAT,杆电机`；shoulder 会同时控制 ID12/ID13；`cmd=0` 会释放保持力矩 | `{"T":122,"cmd":1}` / `{"T":122,"cmd":0}` |
+| 123 | 五关节弧度控制；功能同 `T=102`；必须提供 `r` 或 `rod`；ID11-16 同一帧同步写；五个关节共用 `spd/acc` | `{"T":123,"base":0,"shoulder":0,"elbow":0,"hand":0,"r":-0.5,"spd":25,"acc":5}` |
 | 508 | 单个舵机 raw position 控制，`joint=5` 对应 ID16 外杆，`joint=6` 对应 ID1 夹爪 | `{"T":508,"joint":5,"pos":2047,"spd":120,"acc":10}` |
 | 508 | 也可以直接用物理 ID 控制 ID16 外杆 | `{"T":508,"id":16,"pos":2100,"spd":120,"acc":10}` |
 | 508 | 也可以直接用物理 ID 控制 ID1 外接夹爪 | `{"T":508,"id":1,"pos":2100,"spd":120,"acc":10}` |
 
-`T=124` 返回格式：
+弧度/角度输入不再做软件角度限位，包括 `base/shoulder/elbow/hand/r/rod`；最终下发给舵机的 raw position 仍会按各舵机 raw 边界限制，避免越界写入。外部夹爪角度控制会额外保留开闭范围保护，角度换算后的 raw 会限制在 `2047..3150`。
+
+`T=121` 返回格式：
 
 ```json
 {
-  "T": 1241,
+  "T": 1211,
   "joints_rad": [0, 0, 0, 0, 0],
   "joints_torque": [0, 0, 0, 0, 0]
 }
@@ -131,23 +132,119 @@ pio device monitor -p COM8 -b 921600
 | 135 | 外部夹爪动态力矩适应 | `{"T":135,"mode":1,"g":600}` |
 | 136 | 将外部夹爪当前位置设为中位 | `{"T":136,"id":1}` |
 | 137 | 将外部夹爪切到电机模式 | `{"T":137,"id":1,"tor":120}` |
-| 140 | 主臂和外部夹爪联动 | `{"T":140,"b":0,"s":0,"e":0,"h":0,"g":90,"spd":20,"acc":10,"gspd":100,"gacc":10,"torque":1000}` |
+| 138 | 先按 `T=131` 逻辑发送一次闭合位置指令，延迟 `delay` ms 后直接切入负方向恒力模式持续收紧；默认延迟 `500ms`；收到 `T=130` 打开命令会切回位置模式并打开 | `{"T":138,"spd":100,"acc":10,"torque":1000,"hold":-200,"delay":500}` |
 
-### 外部 ST3215 杆电机
+`T=138` 闭合后恒力保持参数：
+
+```json
+{"T":138,"spd":100,"acc":10,"torque":1000,"hold":-200,"delay":500}
+```
+
+`spd/acc/torque` 用于第一步的位置闭合，和 `T=131` 相同。`hold` 或 `holdtor` 用于第二步恒力模式，固件会强制转为负方向，例如 `hold=80` 和 `hold=-80` 最终都会按 `-80` 下发。`delay` 是闭合位置指令发出后到切入恒力模式的等待时间，单位 ms，默认 `500`。固件不会等待位置反馈或判断是否到位，时间到就直接发送恒力模式指令。
+
+外部夹爪按 Gripper_CF 示例中的 CF35 / CFSCL 方式控制，不再使用普通 SCSCL 位置包。夹爪 `WritePosEx` 的底层写入为 `addr=41,len=7`，数据顺序为 `acc, posL, posH, torqueL, torqueH, speedL, speedH`。`torque` 会限制在 `50..1000`，并用于夹爪位置控制和扭矩上限写入。
+
+### 五关节和夹爪整组控制
+
+`T=141/142/143` 面向五个逻辑关节和外部夹爪的一体化控制。ID11、ID12、ID13、ID14、ID15、ID16 继续按机械臂/杆电机方式控制；ID1 外部夹爪单独走与 `T=130..137` 相同的 CF35/CFSCL 夹爪接口。
 
 | T | 功能 | 示例 |
 |---:|---|---|
-| 150 | 外部杆收回，`spd/acc` 为 `deg/s`、`deg/s^2` | `{"T":150,"spd":100,"acc":10,"torque":1000}` |
-| 151 | 外部杆伸出，`spd/acc` 为 `deg/s`、`deg/s^2` | `{"T":151,"spd":100,"acc":10,"torque":1000}` |
-| 152 | 外部杆角度控制，单位 deg，`spd/acc` 为 `deg/s`、`deg/s^2` | `{"T":152,"angle":180,"spd":100,"acc":10,"torque":1000}` |
-| 153 | 读取外部杆反馈 | `{"T":153}` |
-| 154 | 外部杆扭矩锁定 | `{"T":154,"cmd":1}` |
-| 155 | 外部杆动态力矩适应 | `{"T":155,"mode":1,"r":600}` |
-| 156 | 将外部杆当前位置设为中位 | `{"T":156,"id":16}` |
-| 157 | 外部杆切回舵机位置模式 | `{"T":157,"id":16}` |
-| 158 | 外部杆切到连续电机模式 | `{"T":158,"id":16}` |
-| 159 | 外部杆连续电机速度控制，速度可为负，0 停止 | `{"T":159,"speed":600,"acc":10}` |
-| 160 | 主臂、外部夹爪、外部杆联动；主臂和杆共用 `spd/acc`，夹爪 `gspd/gacc` 仍为外部夹爪舵机 raw 单位 | `{"T":160,"b":0,"s":0,"e":0,"h":0,"g":90,"r":180,"spd":20,"acc":10,"gspd":100,"gacc":10,"gtorque":1000,"rtorque":1000}` |
+| 141 | 读取五个逻辑关节和夹爪状态；ID11-16 使用机械臂/杆反馈读取，ID1 使用夹爪反馈读取；夹爪状态返回 `open` 或 `closed` | `{"T":141}` |
+| 142 | 所有电机扭矩锁定/释放；ID11-16 使用机械臂/杆扭矩控制，ID1 使用夹爪 `ExternalGripper_torqueCtrl()` | `{"T":142,"cmd":1}` / `{"T":142,"cmd":0}` |
+| 143 | 前五个逻辑关节弧度同步控制，并同步控制夹爪开闭；`gripper=0` 打开，`gripper=1` 闭合；闭合后持续保持扭矩；必须提供 `r` 或 `rod`；夹爪部分与 `T=130/131` 使用同一入口 | `{"T":143,"base":0,"shoulder":0,"elbow":0,"hand":0,"r":0,"gripper":1,"spd":100,"acc":10,"torque":1000}` |
+
+`T=141` 会先读取 ID11-16 的机械臂/杆反馈，再用 `ExternalGripper_getFeedback()` 读取 ID1 夹爪反馈。`T=142` 会先控制 ID11-16 的扭矩，再用 `ExternalGripper_torqueCtrl()` 控制 ID1。`T=143` 会先调用 `BookArm_syncAllJointsRad()` 控制 ID11-16；夹爪部分则直接调用 `ExternalGripper_open()` 或 `ExternalGripper_close()`，因此 `gripper=1` 的夹爪关闭逻辑与 `T=131` 完全一致，使用同样的 `spd/acc/torque` 参数和 `3150` 闭合目标。`gtorque` 仍可作为旧字段兼容，优先使用 `torque`。
+
+```text
+ID11 base
+ID12 shoulder driving
+ID13 shoulder driven
+ID14 elbow
+ID15 fourth joint / hand
+ID16 fifth joint / external rod
+ID1  external gripper
+```
+
+`T=141` 返回格式：
+
+```json
+{
+  "T": 1411,
+  "ok": true,
+  "joints_rad": [0, 0, 0, 0, 0],
+  "joints_torque": [0, 0, 0, 0, 0],
+  "raw_pos": [2049, 2054, 2039, 1947, 2590, 2047, 2047],
+  "online": [true, true, true, true, true, true, true],
+  "gripper_state": "open",
+  "gripper_pos": 2047
+}
+```
+
+数组顺序：
+
+```text
+joints_rad:    base, shoulder, elbow, hand, rod
+joints_torque: base, shoulder, elbow, hand, rod
+raw_pos:       ID11, ID12, ID13, ID14, ID15, ID16, ID1
+online:        ID11, ID12, ID13, ID14, ID15, ID16, ID1
+```
+
+`gripper_state` 为 `open` 或 `closed`。
+
+`T=142` 返回格式：
+
+```json
+{
+  "T": 1421,
+  "ok": true,
+  "requested": 1,
+  "cmd": 1,
+  "gripper_hold": true,
+  "ids": "11,12,13,14,15,16,1"
+}
+```
+
+`requested` 是收到的原始请求，`cmd` 是实际下发的扭矩状态。当前配置启用 `ARM_FORCE_TORQUE_LOCK_ALWAYS_ON` 时，`cmd=0` 会被强制保持为 `1`。夹爪已经通过 `T=143` 闭合并进入 `gripper_hold=true` 时，即使请求 `{"T":142,"cmd":0}`，实际 `cmd` 仍会保持为 `1`，避免夹爪松开。需要释放抓取时，先用 `T=143` 发送 `gripper=0` 打开夹爪。
+
+如果总线忙：
+
+```json
+{
+  "T": 1421,
+  "ok": false,
+  "error": "servo bus busy"
+}
+```
+
+`T=143` 返回格式：
+
+```json
+{
+  "T": 1431,
+  "ok": true,
+  "arm": true,
+  "gripper_ok": true,
+  "gripper": "closed",
+  "gripper_hold": true,
+  "pos": [2049, 2054, 2039, 1947, 2590, 2047, 3150]
+}
+```
+
+`pos` 顺序为 `ID11, ID12, ID13, ID14, ID15, ID16, ID1`。`gripper=0` 时夹爪目标为 `open` / `2047`，`gripper=1` 时夹爪目标为 `closed` / `3150`。
+`arm=true` 表示 ID11-16 的五个逻辑关节控制已下发；`gripper_ok=true` 表示 ID1 夹爪控制已通过 CF35/CFSCL 夹爪接口下发。`gripper_hold=true` 表示夹爪处于持续抓取保持状态。
+
+如果缺少 `r` 或 `rod`：
+
+```json
+{
+  "T": 1431,
+  "ok": false,
+  "error": "T=143 requires r or rod"
+}
+```
+
+`T=143` 的 `ok=true` 表示机械臂/杆和夹爪控制命令均已发出，不表示每个电机已经运动到位。确认实际状态可再发送 `{"T":141}`。
 
 ### 文件和扭矩控制
 

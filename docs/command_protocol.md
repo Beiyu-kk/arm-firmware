@@ -32,6 +32,7 @@ pio device monitor -p COM8 -b 921600
 | `122` | 多关节角度控制 | `RoArmM2_allJointsAngleCtrl()` | `{"T":122,"b":0,"s":0,"e":90,"h":180,"spd":10,"acc":10}` |
 | `123` | 连续运动控制 | `constantCtrl()` | `{"T":123,"m":0,"axis":1,"cmd":1,"spd":3}` |
 | `124` | 读取全部关节数组反馈 | `RoArmM2_getPosByServoFeedback()` + `BookArm_jointsArrayFeedback()` | `{"T":124}` 返回 `{"T":1241,"joints_rad":[b,s,e,t,r],"joints_torque":[b,s,e,t,r]}` |
+| `125` | 五个逻辑关节扭矩锁定/释放，`cmd=0` 释放保持力矩 | `BookArm_fiveJointsTorqueCtrl()` | `{"T":125,"cmd":1}` / `{"T":125,"cmd":0}` |
 
 ## 外置夹爪命令
 

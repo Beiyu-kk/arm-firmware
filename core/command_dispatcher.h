@@ -48,12 +48,13 @@ void jsonCmdReceiveHandler(){
 													);
 												}
 												break;
+	case CMD_JOINTS_RAD_CTRL_ALIAS:
 	case CMD_JOINTS_RAD_CTRL:
 												if (!jsonCmdReceive.containsKey("r") && !jsonCmdReceive.containsKey("rod")) {
 													jsonInfoHttp.clear();
-													jsonInfoHttp["T"] = 1021;
+													jsonInfoHttp["T"] = cmdType * 10 + 1;
 													jsonInfoHttp["ok"] = false;
-													jsonInfoHttp["error"] = "T=102 requires r or rod";
+													jsonInfoHttp["error"] = "joint sync rad control requires r or rod";
 													serializeJson(jsonInfoHttp, Serial);
 													Serial.println();
 													break;
@@ -164,74 +165,19 @@ void jsonCmdReceiveHandler(){
 												jsonCmdReceive["led"]
 												);break;
 	case CMD_SWITCH_OFF:  switchEmergencyStop();break;
-	case CMD_SINGLE_JOINT_ANGLE:
-												if ((jsonCmdReceive["joint"] | 0) == EXT_ROD_JOINT) {
-													ExternalRod_moveToAngle(
-													jsonCmdReceive["angle"],
-													jsonCmdReceive["spd"],
-													jsonCmdReceive["acc"],
-													jsonCmdReceive["torque"] | EXT_ROD_DEFAULT_TORQUE
-													);
-												}
-												else if ((jsonCmdReceive["joint"] | 0) == EXT_GRIPPER_JOINT) {
-													ExternalGripper_moveToAngle(
-													jsonCmdReceive["angle"],
-													jsonCmdReceive["spd"],
-													jsonCmdReceive["acc"],
-													jsonCmdReceive["torque"] | EXT_GRIPPER_DEFAULT_TORQUE
-													);
-												}
-												else {
-													RoArmM2_singleJointAngleCtrl(
-													jsonCmdReceive["joint"],
-													jsonCmdReceive["angle"],
-													jsonCmdReceive["spd"],
-													jsonCmdReceive["acc"]
-													);
-												}
-												break;
-	case CMD_JOINTS_ANGLE_CTRL:
-												RoArmM2_allJointsAngleCtrl(
-												jsonCmdReceive["b"],
-												jsonCmdReceive["s"],
-												jsonCmdReceive["e"],
-												jsonCmdReceive["h"],
-												jsonCmdReceive["spd"],
-												jsonCmdReceive["acc"]
-												);
-												if (jsonCmdReceive.containsKey("r") || jsonCmdReceive.containsKey("rod")) {
-													double rodAngle = jsonCmdReceive.containsKey("r") ?
-														jsonCmdReceive["r"].as<double>() :
-														jsonCmdReceive["rod"].as<double>();
-													ExternalRod_moveToAngle(
-													rodAngle,
-													jsonCmdReceive["spd"] | 0,
-													jsonCmdReceive["acc"] | 0,
-													jsonCmdReceive["rtorque"] | EXT_ROD_DEFAULT_TORQUE
-													);
-												}
-												break;
-// constant ctrl
-// m: 0 - angle
-//    1 - xyzt
-// cmd: 0 - stop
-// 		  1 - increase
-// 		  2 - decrease
-// {"T":123,"m":0,"axis":0,"cmd":0,"spd":0}
-	case CMD_CONSTANT_CTRL:
-												constantCtrl(
-												jsonCmdReceive["m"],
-												jsonCmdReceive["axis"],
-												jsonCmdReceive["cmd"],
-												jsonCmdReceive["spd"]
-												);break;
 	case CMD_JOINTS_ARRAY_FEEDBACK:
 												RoArmM2_getPosByServoFeedback();
 												BookArm_jointsArrayFeedback();
 												break;
+	case CMD_FIVE_JOINTS_TORQUE_CTRL:
+												BookArm_fiveJointsTorqueCtrl(
+												jsonCmdReceive["cmd"] | 1
+												);
+												break;
 
 
 	case CMD_EXT_GRIPPER_OPEN:
+												ExternalGripper_stopCloseHold();
 												ExternalGripper_open(
 												jsonCmdReceive["spd"] | 0,
 												jsonCmdReceive["acc"] | 0,
@@ -272,90 +218,51 @@ void jsonCmdReceiveHandler(){
 												jsonCmdReceive["id"] | EXT_GRIPPER_SERVO_ID,
 												jsonCmdReceive["tor"] | 0
 												);break;
-	case CMD_FUSION_JOINTS_GRIPPER_ANGLE:
-												Fusion_jointsAngleGripperCtrl(
-												jsonCmdReceive["b"] | BASE_JOINT_ANG,
-												jsonCmdReceive["s"] | SHOULDER_JOINT_ANG,
-												jsonCmdReceive["e"] | ELBOW_JOINT_ANG,
-												jsonCmdReceive["h"] | EOAT_JOINT_ANG,
-												jsonCmdReceive["g"] | EXT_GRIPPER_OPEN_ANGLE_DEG,
-												jsonCmdReceive["spd"] | 20,
-												jsonCmdReceive["acc"] | 10,
-												jsonCmdReceive["gspd"] | 100,
-												jsonCmdReceive["gacc"] | 10,
-												jsonCmdReceive["torque"] | EXT_GRIPPER_DEFAULT_TORQUE
-												);break;
-
-	case CMD_EXT_ROD_RETRACT:
-												ExternalRod_retract(
+	case CMD_EXT_GRIPPER_CLOSE_HOLD:
+												ExternalGripper_startCloseThenHold(
 												jsonCmdReceive["spd"] | 0,
 												jsonCmdReceive["acc"] | 0,
-												jsonCmdReceive["torque"] | EXT_ROD_DEFAULT_TORQUE
+												jsonCmdReceive["torque"] | EXT_GRIPPER_DEFAULT_TORQUE,
+												jsonCmdReceive.containsKey("hold") ?
+													jsonCmdReceive["hold"].as<s16>() :
+													(jsonCmdReceive["holdtor"] | -80),
+												jsonCmdReceive["delay"] | 500
 												);break;
-	case CMD_EXT_ROD_EXTEND:
-												ExternalRod_extend(
-												jsonCmdReceive["spd"] | 0,
-												jsonCmdReceive["acc"] | 0,
-												jsonCmdReceive["torque"] | EXT_ROD_DEFAULT_TORQUE
-												);break;
-	case CMD_EXT_ROD_ANGLE:
-												ExternalRod_moveToAngle(
-												jsonCmdReceive["angle"] | EXT_ROD_RETRACT_ANGLE_DEG,
-												jsonCmdReceive["spd"] | 0,
-												jsonCmdReceive["acc"] | 0,
-												jsonCmdReceive["torque"] | EXT_ROD_DEFAULT_TORQUE
-												);break;
-	case CMD_EXT_ROD_FEEDBACK:
-												ExternalRod_getFeedback();
-												ExternalRod_infoFeedback();
+	case CMD_ALL_MOTORS_STATE_FEEDBACK:
+												BookArm_allMotorsStateFeedback();
 												break;
-	case CMD_EXT_ROD_TORQUE_CTRL:
-												ExternalRod_torqueCtrl(
+	case CMD_ALL_MOTORS_TORQUE_CTRL:
+												BookArm_allMotorsTorqueCtrl(
 												jsonCmdReceive["cmd"] | 1
-												);break;
-	case CMD_EXT_ROD_DYNAMIC_ADAPTATION:
-												ExternalRod_dynamicAdaptation(
-												jsonCmdReceive["mode"] | 0,
-												jsonCmdReceive["r"] | ST_TORQUE_MAX
-												);break;
-	case CMD_EXT_ROD_SET_MIDDLE:
-												ExternalRod_setMiddle(
-												jsonCmdReceive["id"] | EXT_ROD_SERVO_ID
-												);break;
-	case CMD_EXT_ROD_SET_SERVO_MODE:
-												ExternalRod_setServoMode(
-												jsonCmdReceive["id"] | EXT_ROD_SERVO_ID
-												);break;
-	case CMD_EXT_ROD_SET_MOTOR_MODE:
-												ExternalRod_setMotorMode(
-												jsonCmdReceive["id"] | EXT_ROD_SERVO_ID
-												);break;
-	case CMD_EXT_ROD_MOTOR_SPEED:
-												ExternalRod_motorSpeed(
-												jsonCmdReceive["speed"] | 0,
-												jsonCmdReceive["acc"] | 0
-												);break;
-	case CMD_FUSION_JOINTS_GRIPPER_ROD_ANGLE:
-												Fusion_jointsGripperRodAngleCtrl(
-												jsonCmdReceive["b"] | BASE_JOINT_ANG,
-												jsonCmdReceive["s"] | SHOULDER_JOINT_ANG,
-												jsonCmdReceive["e"] | ELBOW_JOINT_ANG,
-												jsonCmdReceive["h"] | EOAT_JOINT_ANG,
-												jsonCmdReceive["g"] | EXT_GRIPPER_OPEN_ANGLE_DEG,
-												jsonCmdReceive["r"] | EXT_ROD_RETRACT_ANGLE_DEG,
-												jsonCmdReceive["spd"] | 20,
-												jsonCmdReceive["acc"] | 10,
-												jsonCmdReceive["gspd"] | 100,
-												jsonCmdReceive["gacc"] | 10,
-												jsonCmdReceive["gtorque"] | EXT_GRIPPER_DEFAULT_TORQUE,
-												jsonCmdReceive["spd"] | 20,
-												jsonCmdReceive["acc"] | 10,
+												);
+												break;
+	case CMD_ALL_MOTORS_SYNC_CTRL:
+												if (!jsonCmdReceive.containsKey("r") && !jsonCmdReceive.containsKey("rod")) {
+													jsonInfoHttp.clear();
+													jsonInfoHttp["T"] = 1431;
+													jsonInfoHttp["ok"] = false;
+													jsonInfoHttp["error"] = "T=143 requires r or rod";
+													serializeJson(jsonInfoHttp, Serial);
+													Serial.println();
+													break;
+												}
+												BookArm_syncFiveJointsGripperRad(
+												jsonCmdReceive["base"],
+												jsonCmdReceive["shoulder"],
+												jsonCmdReceive["elbow"],
+												jsonCmdReceive["hand"],
+												jsonCmdReceive.containsKey("rod") ?
+													jsonCmdReceive["rod"].as<double>() :
+													jsonCmdReceive["r"].as<double>(),
+												BookArm_gripperCloseFromCommand(jsonCmdReceive),
+												jsonCmdReceive["spd"] | 0,
+												jsonCmdReceive["acc"] | 0,
+												jsonCmdReceive.containsKey("torque") ?
+													jsonCmdReceive["torque"].as<u16>() :
+													(jsonCmdReceive["gtorque"] | EXT_GRIPPER_DEFAULT_TORQUE),
 												jsonCmdReceive["rtorque"] | EXT_ROD_DEFAULT_TORQUE
-												);break;
-
-
-
-
+												);
+												break;
 	// mission & steps edit & file edit.
 	case CMD_SCAN_FILES:  scanFlashContents();
 												break;

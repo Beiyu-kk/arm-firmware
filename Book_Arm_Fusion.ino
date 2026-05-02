@@ -1,7 +1,7 @@
 #include <ArduinoJson.h>
 StaticJsonDocument<512> jsonCmdReceive;
 StaticJsonDocument<512> jsonInfoSend;
-StaticJsonDocument<512> jsonInfoHttp;
+StaticJsonDocument<1024> jsonInfoHttp;
 
 #include <SCServo.h>
 #include <Preferences.h>
@@ -21,6 +21,7 @@ StaticJsonDocument<512> jsonInfoHttp;
 #include "arm/roarm_m2_module.h"
 #include "end_effectors/external_gripper.h"
 #include "end_effectors/external_rod.h"
+#include "core/bookarm_group_control.h"
 #include "drivers/switch_module.h"
 
 // Command IDs and storage/mission support.
@@ -182,13 +183,14 @@ void loop() {
     constantHandle();
     prev_time = curr_time;
   }
+  ExternalGripper_closeHoldHandle();
 
   if (curr_time >= sharedBusQuietUntil &&
       curr_time - sharedBusLastFeedbackMs >= SHARED_BUS_FEEDBACK_INTERVAL_MS) {
-    RoArmM2_getPosByServoFeedback();
+    BookArm_syncReadAllMotorFeedback();
     sharedBusLastFeedbackMs = curr_time;
   }
-  RoArmM2_holdTorqueLock();
+  BookArm_holdAllMotorsTorqueLock();
   
   // esp-now flow ctrl as a flow-leader.
   switch(espNowMode) {

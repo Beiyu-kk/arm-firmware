@@ -46,8 +46,7 @@ bool externalRodTorqueWarned = false;
 bool externalRodPositionModeActive = true;
 
 s16 externalRodAngleToPos(double inputAng) {
-  double limitedAng = constrain(inputAng, EXT_ROD_MIN_ANGLE_DEG, EXT_ROD_MAX_ANGLE_DEG);
-  double pos = EXT_ROD_ZERO_POS + EXT_ROD_POS_DIRECTION * ((limitedAng / 360.0) * ARM_SERVO_POS_RANGE);
+  double pos = EXT_ROD_ZERO_POS + EXT_ROD_POS_DIRECTION * ((inputAng / 360.0) * ARM_SERVO_POS_RANGE);
   return constrain((s16)round(pos), 0, ARM_SERVO_POS_RANGE - 1);
 }
 
@@ -213,7 +212,7 @@ bool BookArm_syncAllJointsRad(
   rodTorqueInput = ST_TORQUE_MAX;
 #endif
   externalRodRequestedTorque = constrain(rodTorqueInput, ST_TORQUE_MIN, ST_TORQUE_MAX);
-  extRodGoalAngleDeg = constrain(inputRod * 180.0 / M_PI, EXT_ROD_MIN_ANGLE_DEG, EXT_ROD_MAX_ANGLE_DEG);
+  extRodGoalAngleDeg = inputRod * 180.0 / M_PI;
   if (!externalRodPositionModeActive) {
     ExternalRod_setServoMode(EXT_ROD_SERVO_ID);
   }
@@ -247,11 +246,41 @@ bool BookArm_syncAllJointsRad(
   return RoArmM2_syncWritePosEx(ids, 6, positions, speeds, accs);
 }
 
+void BookArm_fiveJointsTorqueCtrl(u8 enableCMD) {
+  enableCMD = enableCMD ? 1 : 0;
+
+  if (!SharedBus_take("five joints torque")) {
+    return;
+  }
+
+  st.EnableTorque(BASE_SERVO_ID, enableCMD);
+  st.EnableTorque(SHOULDER_DRIVING_SERVO_ID, enableCMD);
+  st.EnableTorque(SHOULDER_DRIVEN_SERVO_ID, enableCMD);
+  st.EnableTorque(ELBOW_SERVO_ID, enableCMD);
+  st.EnableTorque(GRIPPER_SERVO_ID, enableCMD);
+#if EXT_ROD_USE_ARM_BUS
+  st.EnableTorque(EXT_ROD_SERVO_ID, enableCMD);
+#endif
+
+  RoArmM2_torqueLock = (enableCMD != 0);
+  if (RoArmM2_torqueLock) {
+    RoArmM2_torqueGuardEnabled = true;
+  }
+  SharedBus_release(SHARED_BUS_ARM_WRITE_QUIET_MS);
+
+#if !EXT_ROD_USE_ARM_BUS
+  if (ExternalRod_takeBus("five joints rod torque")) {
+    externalRodBus.EnableTorque(EXT_ROD_SERVO_ID, enableCMD);
+    ExternalRod_releaseBus(SHARED_BUS_ROD_CMD_QUIET_MS);
+  }
+#endif
+}
+
 void ExternalRod_moveToAngle(double inputAng, u16 speedDegPerSec, u8 accDegPerSec2, u16 torqueInput) {
 #if ARM_FORCE_MAX_TORQUE_LIMIT_ALWAYS_ON
   torqueInput = ST_TORQUE_MAX;
 #endif
-  extRodGoalAngleDeg = constrain(inputAng, EXT_ROD_MIN_ANGLE_DEG, EXT_ROD_MAX_ANGLE_DEG);
+  extRodGoalAngleDeg = inputAng;
   externalRodRequestedTorque = constrain(torqueInput, ST_TORQUE_MIN, ST_TORQUE_MAX);
   if (!externalRodPositionModeActive) {
     ExternalRod_setServoMode(EXT_ROD_SERVO_ID);
@@ -393,7 +422,7 @@ void BookArm_jointsArrayFeedback() {
   ExternalRod_getFeedback(true);
 
   jsonInfoHttp.clear();
-  jsonInfoHttp["T"] = 1241;
+  jsonInfoHttp["T"] = 1211;
 
   JsonArray jointsRad = jsonInfoHttp.createNestedArray("joints_rad");
   jointsRad.add(radB);
