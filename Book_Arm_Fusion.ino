@@ -92,13 +92,9 @@ void setup() {
   ExternalRod_servoInit();
   ExternalRod_initCheck();
   ExternalRod_setServoMode();
-  ExternalRod_moveToPos(
-    EXT_ROD_BOOT_TARGET_POS,
-    EXT_ROD_BOOT_MOVE_SPEED,
-    EXT_ROD_BOOT_MOVE_ACC,
-    EXT_ROD_DEFAULT_TORQUE
-  );
-  extRodGoalAngleDeg = externalRodPosToAngle(EXT_ROD_BOOT_TARGET_POS);
+  if (externalRodFeedback.status) {
+    extRodGoalAngleDeg = externalRodPosToAngle(externalRodFeedback.pos);
+  }
 
   // check the status of the servos.
   screenLine_2 = screenLine_3;
